@@ -1,0 +1,13 @@
+- [x] Verify that the copilot-instructions.md file in the .github directory is created. Summary: File exists and is tracked.
+- [x] Clarify Project Requirements. Summary: Confirmed React frontend, PostgreSQL backend stack, ACID transfers, deadlock handling, admin analytics.
+- [x] Scaffold the Project. Summary: Created `frontend` (Vite React TypeScript) and `backend` (Node TypeScript + Express + Prisma).
+- [x] Customize the Project. Summary: Implemented JWT auth, user register/login, transfer API, transaction history, admin login, admin transaction list, chart data endpoints, and React pages.
+- [x] Install Required Extensions. Summary: No extension requirements were returned by setup tools.
+- [x] Compile the Project. Summary: Frontend and backend build successfully; Docker is not available in this environment for DB runtime.
+- [x] Create and Run Task. Summary: Not required for this setup since standard npm scripts are present.
+- [x] Launch the Project. Summary: Skipped automatic launch; user can run `npm run dev` in backend and frontend terminals.
+- [x] Ensure Documentation is Complete. Summary: Root README and this file are up to date and comments removed.
+
+- Work through each checklist item systematically.
+- Keep communication concise and focused.
+- Follow development best practices.
