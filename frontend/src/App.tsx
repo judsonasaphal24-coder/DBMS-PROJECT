@@ -4,10 +4,12 @@ import { Bar, BarChart, CartesianGrid, Legend, Pie, PieChart, ResponsiveContaine
 
 const API_BASE = "http://localhost:4000/api";
 
-const shellHighlights = [
-  { title: "Live wallet", text: "Balance and history refresh after every transfer." },
-  { title: "Password reset", text: "Forgot-password flow is built into the login screen." },
-  { title: "Admin analytics", text: "Transaction charts and tables are one tab away." },
+type IconName = "wallet" | "shield" | "chart" | "user" | "lock" | "spark";
+
+const shellHighlights: Array<{ title: string; text: string; icon: IconName }> = [
+  { title: "Live wallet", text: "Balance and history refresh after every transfer.", icon: "wallet" },
+  { title: "Password reset", text: "Forgot-password flow is built into the login screen.", icon: "lock" },
+  { title: "Admin analytics", text: "Transaction charts and tables are one tab away.", icon: "chart" },
 ];
 
 const homeStats = [
@@ -23,6 +25,66 @@ const quickSteps = [
   "Track transactions live in your dashboard.",
 ];
 
+const AppIcon = ({ name, className }: { name: IconName; className?: string }) => {
+  const common = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+
+  if (name === "wallet") {
+    return (
+      <svg className={className} {...common}>
+        <path d="M3 7a2 2 0 0 1 2-2h13a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2z" />
+        <path d="M16 12h5" />
+        <circle cx="16" cy="12" r="1" />
+      </svg>
+    );
+  }
+
+  if (name === "shield") {
+    return (
+      <svg className={className} {...common}>
+        <path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    );
+  }
+
+  if (name === "chart") {
+    return (
+      <svg className={className} {...common}>
+        <path d="M4 19h16" />
+        <path d="M7 15v-4" />
+        <path d="M12 15V9" />
+        <path d="M17 15V6" />
+      </svg>
+    );
+  }
+
+  if (name === "user") {
+    return (
+      <svg className={className} {...common}>
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5 20c1.5-3 4-4.5 7-4.5S17.5 17 19 20" />
+      </svg>
+    );
+  }
+
+  if (name === "lock") {
+    return (
+      <svg className={className} {...common}>
+        <rect x="5" y="11" width="14" height="10" rx="2" />
+        <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className={className} {...common}>
+      <path d="M12 3v6" />
+      <path d="m9.5 10.5 2.5 2.5 2.5-2.5" />
+      <path d="M4 16c2-1 4-1.5 8-1.5S18 15 20 16" />
+    </svg>
+  );
+};
+
 type Session = {
   token: string;
   role: "USER" | "ADMIN";
@@ -32,7 +94,8 @@ type Session = {
 type Txn = {
   id: string;
   amount: number;
-  status: "SUCCESS" | "FAILED";
+  status: "SUCCESS" | "FAILED" | "RETRIED";
+  retryCount: number;
   createdAt: string;
   senderEmail: string;
   receiverEmail: string;
@@ -40,7 +103,22 @@ type Txn = {
   failureReason?: string;
 };
 
+type SystemLog = {
+  id: string;
+  level: "INFO" | "WARN" | "ERROR";
+  event: string;
+  message: string;
+  transactionId?: string | null;
+  createdAt: string;
+};
+
 type Mode = "home" | "register" | "login-role" | "user-login" | "admin-login" | "forgot-password" | "reset-password";
+
+const getStatusClass = (status: Txn["status"]) => {
+  if (status === "SUCCESS") return "status-success";
+  if (status === "FAILED") return "status-failed";
+  return "status-retried";
+};
 
 const getSession = (): Session | null => {
   const raw = localStorage.getItem("wallet-session");
@@ -73,10 +151,17 @@ const api = async <T,>(path: string, method = "GET", body?: unknown, token?: str
   return res.json() as Promise<T>;
 };
 
-const Shell = ({ children }: { children: ReactNode }) => (
+const Shell = ({ children, toolbar }: { children: ReactNode; toolbar?: ReactNode }) => (
   <main className="shell">
     <div className="ambient ambient-left" aria-hidden="true" />
     <div className="ambient ambient-right" aria-hidden="true" />
+    <div className="topbar">
+      <div className="topbar-brand">
+        <AppIcon name="spark" className="icon-sm" />
+        <span>PulsePay App</span>
+      </div>
+      <div className="topbar-actions">{toolbar}</div>
+    </div>
     <header>
       <div className="eyebrow">Digital wallet demo</div>
       <h1>PulsePay</h1>
@@ -85,7 +170,10 @@ const Shell = ({ children }: { children: ReactNode }) => (
     <section className="hero-strip" aria-label="Product highlights">
       {shellHighlights.map((item) => (
         <article key={item.title} className="hero-card">
-          <span>{item.title}</span>
+          <span>
+            <AppIcon name={item.icon} className="icon-sm" />
+            {item.title}
+          </span>
           <p>{item.text}</p>
         </article>
       ))}
@@ -190,13 +278,14 @@ const UserPortal = ({ session, onLogout }: UserPortalProps) => {
               <th>From</th>
               <th>To</th>
               <th>Amount</th>
+              <th>Retries</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {txns.length === 0 && (
               <tr>
-                <td colSpan={5}>No transactions yet. Make your first transfer.</td>
+                <td colSpan={6}>No transactions yet. Make your first transfer.</td>
               </tr>
             )}
             {txns.map((tx) => (
@@ -205,7 +294,8 @@ const UserPortal = ({ session, onLogout }: UserPortalProps) => {
                 <td>{tx.senderEmail}</td>
                 <td>{tx.receiverEmail}</td>
                 <td>{tx.amount}</td>
-                <td>{tx.status}</td>
+                <td>{tx.retryCount}</td>
+                <td><span className={`status-chip ${getStatusClass(tx.status)}`}>{tx.status}</span></td>
               </tr>
             ))}
           </tbody>
@@ -226,6 +316,8 @@ const AdminPortal = ({ session, onLogout }: AdminPortalProps) => {
   const [rows, setRows] = useState<Txn[]>([]);
   const [daily, setDaily] = useState<Array<{ day: string; count: number }>>([]);
   const [statusSplit, setStatusSplit] = useState<Array<{ name: string; value: number }>>([]);
+  const [logs, setLogs] = useState<SystemLog[]>([]);
+  const [simulating, setSimulating] = useState(false);
   const [message, setMessage] = useState("");
 
   const adminToken = useMemo(() => (session.role === "ADMIN" ? session.token : undefined), [session]);
@@ -250,6 +342,68 @@ const AdminPortal = ({ session, onLogout }: AdminPortalProps) => {
     loadDashboard().catch((error) => setMessage((error as Error).message));
   }, [adminToken]);
 
+  useEffect(() => {
+    if (!adminToken) return;
+
+    const loadLogs = async () => {
+      const data = await api<SystemLog[]>('/admin/logs', 'GET', undefined, adminToken);
+      setLogs(data);
+    };
+
+    loadLogs().catch((error) => setMessage((error as Error).message));
+    const timer = window.setInterval(() => {
+      loadLogs().catch(() => undefined);
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [adminToken]);
+
+  const refreshLogs = async () => {
+    if (!adminToken) return;
+    const data = await api<SystemLog[]>('/admin/logs', 'GET', undefined, adminToken);
+    setLogs(data);
+  };
+
+  const simulateTransactions = async () => {
+    if (!adminToken) return;
+    setSimulating(true);
+    try {
+      const response = await api<{ message: string; users: string[]; result: { first: string; second: string } }>(
+        '/admin/simulate-transactions',
+        'POST',
+        { amount: 10 },
+        adminToken,
+      );
+      setMessage(`${response.message} (${response.users.join(' vs ')})`);
+      await Promise.all([loadDashboard(), refreshLogs()]);
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const downloadXml = async () => {
+    if (!adminToken) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/transactions/export/xml`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!res.ok) throw new Error("XML export failed");
+      const xml = await res.text();
+      const blob = new Blob([xml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "pulsepay-transactions.xml";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("XML export downloaded.");
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
+  };
+
   return (
     <section className="panel">
       <div className="summary">
@@ -271,6 +425,16 @@ const AdminPortal = ({ session, onLogout }: AdminPortalProps) => {
           <span>Failed</span>
           <strong>{rows.filter((row) => row.status === "FAILED").length}</strong>
         </article>
+      </div>
+
+      <div className="action-row">
+        <button type="button" onClick={simulateTransactions} disabled={simulating}>
+          {simulating ? "Simulating..." : "Simulate Transactions"}
+        </button>
+        <button type="button" className="ghost-btn" onClick={downloadXml}>
+          <AppIcon name="spark" className="icon-sm" />
+          Export XML
+        </button>
       </div>
 
       <h2>Admin Dashboard</h2>
@@ -299,6 +463,26 @@ const AdminPortal = ({ session, onLogout }: AdminPortalProps) => {
         </article>
       </div>
 
+      <section className="logs-panel">
+        <div className="logs-header">
+          <h3>System Logs</h3>
+          <span>Auto-refresh every 3 seconds</span>
+        </div>
+        <div className="logs-list">
+          {logs.length === 0 && <div className="log-empty">No system logs yet.</div>}
+          {logs.map((log) => (
+            <article key={log.id} className="log-item">
+              <div className={`log-level level-${log.level.toLowerCase()}`}>{log.level}</div>
+              <div>
+                <strong>{log.event}</strong>
+                <p>{log.message}</p>
+              </div>
+              <time>{new Date(log.createdAt).toLocaleTimeString()}</time>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <h3>All Transactions</h3>
       <div className="table-wrap">
         <table>
@@ -308,17 +492,24 @@ const AdminPortal = ({ session, onLogout }: AdminPortalProps) => {
               <th>From</th>
               <th>To</th>
               <th>Amount</th>
+              <th>Retries</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6}>No transactions recorded yet.</td>
+              </tr>
+            )}
             {rows.map((tx) => (
               <tr key={tx.id}>
                 <td>{new Date(tx.createdAt).toLocaleString()}</td>
                 <td>{tx.senderEmail}</td>
                 <td>{tx.receiverEmail}</td>
                 <td>{tx.amount}</td>
-                <td>{tx.status}</td>
+                <td>{tx.retryCount}</td>
+                <td><span className={`status-chip ${getStatusClass(tx.status as Txn["status"])}`}>{tx.status}</span></td>
               </tr>
             ))}
           </tbody>
@@ -439,6 +630,30 @@ const App = () => {
     setMode("home");
     setMessage("Logged out.");
   };
+
+  const toolbar = session ? (
+    <>
+      <button type="button" className="ghost-btn" onClick={() => setMode(session.role === "ADMIN" ? "admin-login" : "user-login")}>
+        <AppIcon name={session.role === "ADMIN" ? "chart" : "user"} className="icon-sm" />
+        {session.role === "ADMIN" ? "Dashboard" : "Portal"}
+      </button>
+      <button type="button" className="ghost-btn" onClick={logout}>
+        <AppIcon name="lock" className="icon-sm" />
+        Logout
+      </button>
+    </>
+  ) : (
+    <>
+      <button type="button" className="ghost-btn" onClick={() => setMode("register")}>
+        <AppIcon name="user" className="icon-sm" />
+        Register
+      </button>
+      <button type="button" className="ghost-btn" onClick={() => setMode("login-role")}>
+        <AppIcon name="shield" className="icon-sm" />
+        Login
+      </button>
+    </>
+  );
 
   const renderAuth = () => {
     if (mode === "register") {
@@ -569,15 +784,15 @@ const App = () => {
   };
 
   if (session?.role === "USER") {
-    return <Shell><UserPortal session={session} onLogout={logout} /></Shell>;
+    return <Shell toolbar={toolbar}><UserPortal session={session} onLogout={logout} /></Shell>;
   }
 
   if (session?.role === "ADMIN") {
-    return <Shell><AdminPortal session={session} onLogout={logout} /></Shell>;
+    return <Shell toolbar={toolbar}><AdminPortal session={session} onLogout={logout} /></Shell>;
   }
 
   return (
-    <Shell>
+    <Shell toolbar={toolbar}>
       {mode === "home" ? (
         <section className="panel">
           <div className="badge-row" aria-label="Platform badges">

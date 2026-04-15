@@ -10,6 +10,13 @@ datasource db {
 enum TransactionStatus {
   SUCCESS
   FAILED
+  RETRIED
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
 }
 
 model User {
@@ -41,6 +48,7 @@ model Transaction {
   receiverId  String
   amount      Decimal
   status      TransactionStatus @default(SUCCESS)
+  retryCount  Int               @default(0) @map("retry_count")
   description String?
   failureReason String?
   createdAt   DateTime          @default(now())
@@ -50,6 +58,18 @@ model Transaction {
   @@index([senderId])
   @@index([receiverId])
   @@index([createdAt])
+}
+
+model SystemLog {
+  id            String   @id @default(cuid())
+  level         LogLevel  @default(INFO)
+  event         String
+  message       String
+  transactionId String?
+  createdAt     DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([transactionId])
 }
 
 model Admin {

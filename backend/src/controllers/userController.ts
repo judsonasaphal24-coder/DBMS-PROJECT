@@ -63,6 +63,7 @@ export const myTransactions = async (req: Request, res: Response) => {
       id: tx.id,
       amount: Number(tx.amount),
       status: tx.status,
+      retryCount: tx.retryCount,
       description: tx.description,
       createdAt: tx.createdAt,
       senderEmail: tx.sender.email,
