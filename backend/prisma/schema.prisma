@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -17,6 +17,8 @@ model User {
   name         String
   email        String        @unique
   passwordHash String
+  resetTokenHash String?
+  resetTokenExpiresAt DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   wallet       Wallet?
@@ -27,7 +29,7 @@ model User {
 model Wallet {
   id        String   @id @default(cuid())
   userId    String   @unique
-  balance   Decimal  @db.Decimal(16, 2)
+  balance   Decimal
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -37,7 +39,7 @@ model Transaction {
   id          String            @id @default(cuid())
   senderId    String
   receiverId  String
-  amount      Decimal           @db.Decimal(16, 2)
+  amount      Decimal
   status      TransactionStatus @default(SUCCESS)
   description String?
   failureReason String?

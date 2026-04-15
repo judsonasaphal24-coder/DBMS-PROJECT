@@ -43,13 +43,22 @@ export const dashboardStats = async (_req: Request, res: Response) => {
     prisma.transaction.aggregate({ _sum: { amount: true } }),
   ]);
 
-  const dailyRaw = await prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
-    SELECT DATE("createdAt") AS day, COUNT(*)::bigint AS count
-    FROM "Transaction"
-    GROUP BY DATE("createdAt")
-    ORDER BY DATE("createdAt") DESC
-    LIMIT 7
-  `;
+  const recentTransactions = await prisma.transaction.findMany({
+    select: { createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: 1000,
+  });
+
+  const dailyMap = new Map<string, number>();
+  for (const tx of recentTransactions) {
+    const day = tx.createdAt.toISOString().slice(0, 10);
+    dailyMap.set(day, (dailyMap.get(day) ?? 0) + 1);
+  }
+
+  const daily = Array.from(dailyMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-7)
+    .map(([day, count]) => ({ day, count }));
 
   return res.json({
     summary: {
@@ -57,9 +66,7 @@ export const dashboardStats = async (_req: Request, res: Response) => {
       failedCount,
       totalVolume: Number(volume._sum.amount ?? 0),
     },
-    daily: dailyRaw
-      .map((d: { day: Date; count: bigint }) => ({ day: d.day.toISOString().slice(0, 10), count: Number(d.count) }))
-      .reverse(),
+    daily,
     statusSplit: [
       { name: "Success", value: successCount },
       { name: "Failed", value: failedCount },

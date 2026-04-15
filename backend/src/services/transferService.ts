@@ -21,14 +21,10 @@ export const transferMoney = async ({ senderId, receiverId, amount, description 
   return withDeadlockRetry(async () =>
     prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        const userIds = [senderId, receiverId].sort();
-        const wallets = await tx.$queryRaw<Array<{ id: string; userId: string; balance: number }>>`
-          SELECT id, "userId", balance
-          FROM "Wallet"
-          WHERE "userId" IN (${userIds[0]}, ${userIds[1]})
-          ORDER BY "userId" ASC
-          FOR UPDATE
-        `;
+        const wallets = await tx.wallet.findMany({
+          where: { userId: { in: [senderId, receiverId] } },
+          select: { id: true, userId: true, balance: true },
+        });
 
         const senderWallet = wallets.find((w: { userId: string }) => w.userId === senderId);
         const receiverWallet = wallets.find((w: { userId: string }) => w.userId === receiverId);
