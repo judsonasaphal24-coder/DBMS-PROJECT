@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { transferMoney } from "../services/transferService";
+import { buildTransactionXml } from "../utils/xml";
 
 const transferSchema = z.object({
   receiverEmail: z.email(),
@@ -71,4 +72,35 @@ export const myTransactions = async (req: Request, res: Response) => {
       failureReason: tx.failureReason,
     })),
   );
+};
+
+export const myTransactionsXml = async (req: Request, res: Response) => {
+  const items = await prisma.transaction.findMany({
+    where: {
+      OR: [{ senderId: req.user!.userId }, { receiverId: req.user!.userId }],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    include: {
+      sender: { select: { email: true } },
+      receiver: { select: { email: true } },
+    },
+  });
+
+  const payload = buildTransactionXml(
+    items.map((tx: any) => ({
+      id: tx.id,
+      senderEmail: tx.sender.email,
+      receiverEmail: tx.receiver.email,
+      amount: Number(tx.amount),
+      status: tx.status,
+      retryCount: tx.retryCount,
+      createdAt: tx.createdAt,
+      description: tx.description,
+      failureReason: tx.failureReason,
+    })),
+  );
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  return res.send(payload);
 };

@@ -11,9 +11,12 @@ import { env } from "./config/env";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 import { prisma } from "./lib/prisma";
 
+const FIXED_ADMIN_EMAIL = "admin@pulsepay.com";
+const FIXED_ADMIN_PASSWORD = "admin@123";
+
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: "http://localhost:5173" }));
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json());
@@ -30,15 +33,16 @@ app.use(notFound);
 app.use(errorHandler);
 
 const start = async () => {
-  const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 10);
+  const passwordHash = await bcrypt.hash(FIXED_ADMIN_PASSWORD, 10);
+  await prisma.admin.deleteMany({ where: { email: { not: FIXED_ADMIN_EMAIL } } });
   await prisma.admin.upsert({
-    where: { email: env.ADMIN_EMAIL },
-    update: {},
-    create: { email: env.ADMIN_EMAIL, passwordHash },
+    where: { email: FIXED_ADMIN_EMAIL },
+    update: { passwordHash },
+    create: { email: FIXED_ADMIN_EMAIL, passwordHash },
   });
 
   app.listen(env.PORT, () => {
-    console.log(`Backend listening on port ${env.PORT}`);
+    console.log(`Backend listening on http://localhost:${env.PORT}`);
   });
 };
 

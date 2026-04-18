@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-const API_BASE = "http://localhost:4000/api";
+const API_BASE = "http://localhost:5000/api";
 
 type IconName = "wallet" | "shield" | "chart" | "user" | "lock" | "spark";
 
 const shellHighlights: Array<{ title: string; text: string; icon: IconName }> = [
-  { title: "Live wallet", text: "Balance and history refresh after every transfer.", icon: "wallet" },
-  { title: "Password reset", text: "Forgot-password flow is built into the login screen.", icon: "lock" },
-  { title: "Admin analytics", text: "Transaction charts and tables are one tab away.", icon: "chart" },
+  { title: "ACID Transactions", text: "Transfers execute atomically with consistent balance updates.", icon: "wallet" },
+  { title: "Concurrency Control", text: "Serializable operations keep simultaneous transfers reliable.", icon: "shield" },
+  { title: "Deadlock Handling", text: "Retriable conflicts are resolved through rollback and retry.", icon: "lock" },
+  { title: "Transaction Logging", text: "System events and outcomes are recorded for traceability.", icon: "chart" },
+  { title: "XML Data Representation", text: "Structured export supports reporting and integration use cases.", icon: "spark" },
 ];
 
 const homeStats = [
@@ -112,7 +114,7 @@ type SystemLog = {
   createdAt: string;
 };
 
-type Mode = "home" | "register" | "login-role" | "user-login" | "admin-login" | "forgot-password" | "reset-password";
+type Mode = "home" | "register" | "login-role" | "user-login" | "admin-login" | "forgot-password";
 
 const getStatusClass = (status: Txn["status"]) => {
   if (status === "SUCCESS") return "status-success";
@@ -532,7 +534,6 @@ const App = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [resetEmail, setResetEmail] = useState("");
-  const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState("");
   const [session, setSessionState] = useState<Session | null>(existingSession);
@@ -548,12 +549,12 @@ const App = () => {
   const register = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const data = await api<{ token: string; user: { name: string } }>("/auth/register", "POST", {
+      const data = await api<{ token: string; user: { name: string; role: "USER" } }>("/auth/register", "POST", {
         name,
         email,
         password,
       });
-      const next = { token: data.token, role: "USER" as const, name: data.user.name };
+      const next = { token: data.token, role: data.user.role, name: data.user.name };
       setSession(next);
       setSessionState(next);
       setMode("user-login");
@@ -566,11 +567,12 @@ const App = () => {
   const loginUser = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const data = await api<{ token: string; user: { name: string } }>("/auth/login", "POST", {
+      const data = await api<{ token: string; user: { name: string; role: "USER" } }>("/auth/login", "POST", {
         email,
         password,
       });
-      const next = { token: data.token, role: "USER" as const, name: data.user.name };
+      console.log("login user response", data);
+      const next = { token: data.token, role: data.user.role, name: data.user.name };
       setSession(next);
       setSessionState(next);
       setMode("user-login");
@@ -584,6 +586,7 @@ const App = () => {
     e.preventDefault();
     try {
       const data = await api<{ token: string }>("/auth/admin/login", "POST", { email, password });
+      console.log("login admin response", data);
       const next = { token: data.token, role: "ADMIN" as const, name: "Admin" };
       setSession(next);
       setSessionState(next);
@@ -597,26 +600,11 @@ const App = () => {
   const forgotPassword = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const data = await api<{ message: string; resetToken?: string }>("/auth/forgot-password", "POST", { email: resetEmail });
-      setMessage(data.message);
-      if (data.resetToken) {
-        setResetToken(data.resetToken);
-        setMode("reset-password");
-      }
-    } catch (error) {
-      setMessage((error as Error).message);
-    }
-  };
-
-  const resetPassword = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      await api<{ message: string }>("/auth/reset-password", "POST", {
-        token: resetToken,
+      const data = await api<{ message: string }>("/auth/reset-password", "POST", {
+        email: resetEmail,
         password: newPassword,
       });
-      setMessage("Password reset successful. Please login.");
-      setPassword("");
+      setMessage(data.message);
       setNewPassword("");
       setMode("user-login");
     } catch (error) {
@@ -708,7 +696,7 @@ const App = () => {
                 setMode("forgot-password");
               }}
             >
-              Forgot password
+              Forgot Password?
             </button>
           </form>
           {message && <p className="note">{message}</p>}
@@ -729,27 +717,6 @@ const App = () => {
               onChange={(e) => setResetEmail(e.target.value)}
               type="email"
               placeholder="Your account email"
-              required
-            />
-            <button type="submit">Generate reset token</button>
-          </form>
-          {message && <p className="note">{message}</p>}
-        </section>
-      );
-    }
-
-    if (mode === "reset-password") {
-      return (
-        <section className="panel">
-          <div className="summary">
-            <strong>Reset password</strong>
-            <button type="button" onClick={() => setMode("user-login")}>Back</button>
-          </div>
-          <form className="grid" onSubmit={resetPassword}>
-            <input
-              value={resetToken}
-              onChange={(e) => setResetToken(e.target.value)}
-              placeholder="Reset token"
               required
             />
             <input
@@ -794,22 +761,29 @@ const App = () => {
   return (
     <Shell toolbar={toolbar}>
       {mode === "home" ? (
-        <section className="panel">
-          <div className="badge-row" aria-label="Platform badges">
-            {homeStats.map((item) => (
-              <span key={item.label} className="pill">
-                <strong>{item.value}</strong>
-                <small>{item.label}</small>
-              </span>
-            ))}
-          </div>
-          <h2>Get started</h2>
-          <p className="lede">Choose whether you want to register or log in. If you log in, pick user or admin next.</p>
-          <div className="choice-grid">
-            <button type="button" onClick={() => setMode("register")}>Register</button>
-            <button type="button" onClick={() => setMode("login-role")}>Login</button>
-          </div>
-          <section className="tips" aria-label="How it works">
+        <div className="home-layout">
+          <section className="home-section home-badges" aria-label="Platform badges">
+            <div className="badge-row">
+              {homeStats.map((item) => (
+                <span key={item.label} className="pill">
+                  <strong>{item.value}</strong>
+                  <small>{item.label}</small>
+                </span>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel home-section">
+            <h2>Get started</h2>
+            <p className="lede">Choose whether you want to register or log in. If you log in, pick user or admin next.</p>
+            <div className="choice-grid">
+              <button type="button" onClick={() => setMode("register")}>Register</button>
+              <button type="button" onClick={() => setMode("login-role")}>Login</button>
+            </div>
+            {message && <p className="note">{message}</p>}
+          </section>
+
+          <section className="panel tips home-section" aria-label="How it works">
             <h3>How it works</h3>
             <ul>
               {quickSteps.map((step) => (
@@ -817,8 +791,7 @@ const App = () => {
               ))}
             </ul>
           </section>
-          {message && <p className="note">{message}</p>}
-        </section>
+        </div>
       ) : (
         renderAuth()
       )}

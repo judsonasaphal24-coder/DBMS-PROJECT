@@ -11,8 +11,8 @@ async function main() {
   ];
 
   const admin = {
-    email: "admin@pulsepay.local",
-    password: "admin12345",
+    email: "admin@pulsepay.com",
+    password: "admin@123",
   };
 
   for (const user of users) {
@@ -22,6 +22,7 @@ async function main() {
       update: {
         name: user.name,
         passwordHash,
+        role: "USER",
         wallet: {
           upsert: {
             create: { balance: user.balance },
@@ -33,6 +34,7 @@ async function main() {
         name: user.name,
         email: user.email,
         passwordHash,
+        role: "USER",
         wallet: { create: { balance: user.balance } },
       },
     });
